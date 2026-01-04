@@ -47,33 +47,64 @@ export function encodeSignal(signal) {
 }
 /**
  * Decode a Buffer to Signal
+ * Returns null if buffer is invalid or malformed
  */
 export function decodeSignal(buffer) {
-    let offset = 0;
-    // Signal code
-    const code = buffer.readUInt8(offset);
-    offset += 1;
-    // Timestamp
-    const timestamp = Number(buffer.readBigUInt64BE(offset));
-    offset += 8;
-    // Sender
-    const senderLen = buffer.readUInt16BE(offset);
-    offset += 2;
-    const sender = buffer.slice(offset, offset + senderLen).toString('utf8');
-    offset += senderLen;
-    // Data
-    const dataLen = buffer.readUInt32BE(offset);
-    offset += 4;
-    const data = dataLen > 0
-        ? JSON.parse(buffer.slice(offset, offset + dataLen).toString('utf8'))
-        : undefined;
-    return {
-        code,
-        name: getSignalName(code),
-        sender,
-        timestamp,
-        data
-    };
+    // Minimum buffer length: code(1) + timestamp(8) + senderLen(2) + dataLen(4) = 15
+    if (!buffer || buffer.length < 15) {
+        return null;
+    }
+    try {
+        let offset = 0;
+        // Signal code
+        const code = buffer.readUInt8(offset);
+        offset += 1;
+        // Timestamp
+        const timestamp = Number(buffer.readBigUInt64BE(offset));
+        offset += 8;
+        // Sender length validation
+        const senderLen = buffer.readUInt16BE(offset);
+        offset += 2;
+        // Validate sender length is reasonable
+        if (senderLen > 256 || offset + senderLen > buffer.length) {
+            return null;
+        }
+        const sender = buffer.slice(offset, offset + senderLen).toString('utf8');
+        offset += senderLen;
+        // Data length validation
+        if (offset + 4 > buffer.length) {
+            return null;
+        }
+        const dataLen = buffer.readUInt32BE(offset);
+        offset += 4;
+        // Validate data length
+        if (dataLen > 0 && offset + dataLen > buffer.length) {
+            return null;
+        }
+        // Parse data JSON with error handling
+        let data;
+        if (dataLen > 0) {
+            try {
+                const dataStr = buffer.slice(offset, offset + dataLen).toString('utf8');
+                data = JSON.parse(dataStr);
+            }
+            catch {
+                // Invalid JSON in data portion - return signal without data
+                data = undefined;
+            }
+        }
+        return {
+            code,
+            name: getSignalName(code),
+            sender,
+            timestamp,
+            data
+        };
+    }
+    catch {
+        // Any other parsing error
+        return null;
+    }
 }
 /**
  * Create a new signal

@@ -9,8 +9,9 @@ import { Signal } from '../types.js';
 export declare function encodeSignal(signal: Signal): Buffer;
 /**
  * Decode a Buffer to Signal
+ * Returns null if buffer is invalid or malformed
  */
-export declare function decodeSignal(buffer: Buffer): Signal;
+export declare function decodeSignal(buffer: Buffer): Signal | null;
 /**
  * Create a new signal
  */

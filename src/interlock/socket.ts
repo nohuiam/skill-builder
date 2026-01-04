@@ -49,20 +49,20 @@ export function startSocket(port: number): dgram.Socket {
   socket = dgram.createSocket('udp4');
 
   socket.on('message', (msg: Buffer, rinfo: dgram.RemoteInfo) => {
-    try {
-      const signal = decodeSignal(msg);
+    const signal = decodeSignal(msg);
 
-      // Check tumbler whitelist
-      if (!isSignalAllowed(signal)) {
-        console.error(`Signal ${signal.name} blocked by tumbler`);
-        return;
-      }
-
-      // Route to handler
-      handleSignal(signal);
-    } catch (error) {
-      console.error('Failed to process incoming signal:', error);
+    // Silently ignore invalid/incompatible signals from other servers
+    if (!signal) {
+      return;
     }
+
+    // Check tumbler whitelist
+    if (!isSignalAllowed(signal)) {
+      return;
+    }
+
+    // Route to handler
+    handleSignal(signal);
   });
 
   socket.on('error', (error) => {

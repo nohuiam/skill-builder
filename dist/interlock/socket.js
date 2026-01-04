@@ -37,19 +37,17 @@ export function startSocket(port) {
     loadPeers();
     socket = dgram.createSocket('udp4');
     socket.on('message', (msg, rinfo) => {
-        try {
-            const signal = decodeSignal(msg);
-            // Check tumbler whitelist
-            if (!isSignalAllowed(signal)) {
-                console.error(`Signal ${signal.name} blocked by tumbler`);
-                return;
-            }
-            // Route to handler
-            handleSignal(signal);
+        const signal = decodeSignal(msg);
+        // Silently ignore invalid/incompatible signals from other servers
+        if (!signal) {
+            return;
         }
-        catch (error) {
-            console.error('Failed to process incoming signal:', error);
+        // Check tumbler whitelist
+        if (!isSignalAllowed(signal)) {
+            return;
         }
+        // Route to handler
+        handleSignal(signal);
     });
     socket.on('error', (error) => {
         console.error('InterLock socket error:', error);
