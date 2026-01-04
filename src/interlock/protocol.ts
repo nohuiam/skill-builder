@@ -1,12 +1,21 @@
 /**
- * InterLock Protocol
- * BaNano encoding/decoding for mesh signals
+ * InterLock Protocol - Official BaNano Binary Format
+ *
+ * 12-byte header:
+ * Bytes 0-1:   Signal Type (uint16, big-endian)
+ * Bytes 2-3:   Protocol Version (uint16, big-endian)
+ * Bytes 4-7:   Payload Length (uint32, big-endian)
+ * Bytes 8-11:  Timestamp (uint32, Unix seconds)
+ * Bytes 12+:   Payload (JSON, UTF-8)
  */
 
 import { Signal, SignalTypes } from '../types.js';
 
-// Signal code to name mapping
-const signalNames: Record<number, string> = {
+// Protocol version 1.0
+const PROTOCOL_VERSION = 0x0100;
+
+// Signal name mappings
+const SIGNAL_NAMES: Record<number, string> = {
   [SignalTypes.EXPERIENCE_RECORDED]: 'EXPERIENCE_RECORDED',
   [SignalTypes.PATTERN_EMERGED]: 'PATTERN_EMERGED',
   [SignalTypes.LESSON_EXTRACTED]: 'LESSON_EXTRACTED',
@@ -19,145 +28,100 @@ const signalNames: Record<number, string> = {
   [SignalTypes.SKILL_VALIDATION_FAILED]: 'SKILL_VALIDATION_FAILED',
 };
 
-// Name to code mapping
-const signalCodes: Record<string, number> = Object.entries(signalNames).reduce(
-  (acc, [code, name]) => ({ ...acc, [name]: parseInt(code) }),
-  {}
-);
-
 /**
- * Encode a signal to Buffer for UDP transmission
+ * Get signal name from type code
  */
-export function encodeSignal(signal: Signal): Buffer {
-  const senderBuffer = Buffer.from(signal.sender, 'utf8');
-  const dataBuffer = signal.data ? Buffer.from(JSON.stringify(signal.data), 'utf8') : Buffer.alloc(0);
-
-  // Format: [code:1][timestamp:8][senderLen:2][sender:N][dataLen:4][data:N]
-  const totalLength = 1 + 8 + 2 + senderBuffer.length + 4 + dataBuffer.length;
-  const buffer = Buffer.alloc(totalLength);
-
-  let offset = 0;
-
-  // Signal code (1 byte)
-  buffer.writeUInt8(signal.code, offset);
-  offset += 1;
-
-  // Timestamp (8 bytes)
-  buffer.writeBigUInt64BE(BigInt(signal.timestamp), offset);
-  offset += 8;
-
-  // Sender length (2 bytes) + sender
-  buffer.writeUInt16BE(senderBuffer.length, offset);
-  offset += 2;
-  senderBuffer.copy(buffer, offset);
-  offset += senderBuffer.length;
-
-  // Data length (4 bytes) + data
-  buffer.writeUInt32BE(dataBuffer.length, offset);
-  offset += 4;
-  dataBuffer.copy(buffer, offset);
-
-  return buffer;
+export function getSignalName(signalType: number): string {
+  return SIGNAL_NAMES[signalType] || `UNKNOWN_0x${signalType.toString(16).toUpperCase()}`;
 }
 
 /**
- * Decode a Buffer to Signal
- * Returns null if buffer is invalid or malformed
+ * Encode a signal to BaNano binary format
  */
-export function decodeSignal(buffer: Buffer): Signal | null {
-  // Minimum buffer length: code(1) + timestamp(8) + senderLen(2) + dataLen(4) = 15
-  if (!buffer || buffer.length < 15) {
+export function encode(signalType: number, sender: string, data?: Record<string, unknown>): Buffer {
+  const payload = JSON.stringify({ sender, ...data });
+  const payloadBuffer = Buffer.from(payload, 'utf8');
+
+  const header = Buffer.alloc(12);
+  header.writeUInt16BE(signalType, 0);
+  header.writeUInt16BE(PROTOCOL_VERSION, 2);
+  header.writeUInt32BE(payloadBuffer.length, 4);
+  header.writeUInt32BE(Math.floor(Date.now() / 1000), 8);
+
+  return Buffer.concat([header, payloadBuffer]);
+}
+
+/**
+ * Decode a BaNano binary buffer to Signal
+ * Returns null if buffer is invalid
+ */
+export function decode(buffer: Buffer): Signal | null {
+  // Minimum 12-byte header required
+  if (!buffer || buffer.length < 12) {
     return null;
   }
 
   try {
-    let offset = 0;
+    const signalType = buffer.readUInt16BE(0);
+    const version = buffer.readUInt16BE(2);
+    const payloadLength = buffer.readUInt32BE(4);
+    const timestamp = buffer.readUInt32BE(8);
 
-    // Signal code
-    const code = buffer.readUInt8(offset);
-    offset += 1;
-
-    // Timestamp
-    const timestamp = Number(buffer.readBigUInt64BE(offset));
-    offset += 8;
-
-    // Sender length validation
-    const senderLen = buffer.readUInt16BE(offset);
-    offset += 2;
-
-    // Validate sender length is reasonable
-    if (senderLen > 256 || offset + senderLen > buffer.length) {
+    // Validate payload length
+    if (buffer.length < 12 + payloadLength) {
       return null;
     }
 
-    const sender = buffer.slice(offset, offset + senderLen).toString('utf8');
-    offset += senderLen;
+    // Parse JSON payload
+    const payloadStr = buffer.slice(12, 12 + payloadLength).toString('utf8');
+    const payload = JSON.parse(payloadStr);
 
-    // Data length validation
-    if (offset + 4 > buffer.length) {
-      return null;
-    }
-
-    const dataLen = buffer.readUInt32BE(offset);
-    offset += 4;
-
-    // Validate data length
-    if (dataLen > 0 && offset + dataLen > buffer.length) {
-      return null;
-    }
-
-    // Parse data JSON with error handling
-    let data: Record<string, unknown> | undefined;
-    if (dataLen > 0) {
-      try {
-        const dataStr = buffer.slice(offset, offset + dataLen).toString('utf8');
-        data = JSON.parse(dataStr);
-      } catch {
-        // Invalid JSON in data portion - return signal without data
-        data = undefined;
-      }
+    // Ensure payload has sender
+    if (!payload.sender) {
+      payload.sender = 'unknown';
     }
 
     return {
-      code,
-      name: getSignalName(code),
-      sender,
+      signalType,
+      version,
       timestamp,
-      data
+      payload,
     };
   } catch {
-    // Any other parsing error
     return null;
   }
 }
 
 /**
- * Create a new signal
+ * Check if a signal type is valid (known)
+ */
+export function isValidSignal(signalType: number): boolean {
+  return signalType in SIGNAL_NAMES;
+}
+
+/**
+ * Create a Signal object for emitting
  */
 export function createSignal(
-  code: number,
+  signalType: number,
   sender: string,
   data?: Record<string, unknown>
 ): Signal {
   return {
-    code,
-    name: getSignalName(code),
-    sender,
-    timestamp: Date.now(),
-    data
+    signalType,
+    version: PROTOCOL_VERSION,
+    timestamp: Math.floor(Date.now() / 1000),
+    payload: {
+      sender,
+      ...data,
+    },
   };
 }
 
-/**
- * Get signal name from code
- */
-export function getSignalName(code: number): string {
-  return signalNames[code] || `UNKNOWN_${code.toString(16).toUpperCase()}`;
-}
+// Legacy function names for backwards compatibility
+export const encodeSignal = (signal: Signal): Buffer => {
+  const { sender, ...data } = signal.payload;
+  return encode(signal.signalType, sender, data);
+};
 
-/**
- * Get signal code from name
- */
-export function getSignalCode(name: string): number | undefined {
-  return signalCodes[name];
-}
+export const decodeSignal = decode;

@@ -4,7 +4,7 @@
  */
 
 export { startSocket, closeSocket, sendToPeer, broadcastSignal, getSocketStatus } from './socket.js';
-export { encodeSignal, decodeSignal, createSignal, getSignalName, getSignalCode } from './protocol.js';
+export { encodeSignal, decodeSignal, createSignal, getSignalName, encode, decode, isValidSignal } from './protocol.js';
 export { isSignalAllowed, addToWhitelist, removeFromWhitelist, getWhitelist, loadTumblerConfig } from './tumbler.js';
 export { registerHandler, handleSignal, handlers, initHandlers } from './handlers.js';
 export {
