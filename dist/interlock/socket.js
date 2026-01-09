@@ -14,6 +14,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 let socket = null;
 let serverPort = 3029;
+let heartbeatTimer = null;
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 let peers = [];
 /**
  * Load peer configuration
@@ -54,8 +56,30 @@ export function startSocket(port) {
     });
     socket.bind(port, () => {
         console.error(`InterLock socket listening on port ${port}`);
+        startHeartbeat();
     });
     return socket;
+}
+/**
+ * Start heartbeat broadcasting
+ */
+function startHeartbeat() {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+    }
+    heartbeatTimer = setInterval(() => {
+        const signal = createSignal(SignalTypes.HEARTBEAT, 'skill-builder', {
+            status: 'alive',
+            uptime: process.uptime()
+        });
+        broadcastSignal(signal);
+    }, HEARTBEAT_INTERVAL);
+    // Send initial heartbeat immediately
+    const signal = createSignal(SignalTypes.HEARTBEAT, 'skill-builder', {
+        status: 'alive',
+        uptime: process.uptime()
+    });
+    broadcastSignal(signal);
 }
 /**
  * Send a signal to a specific peer
@@ -143,6 +167,10 @@ export function emitSkillValidationFailed(skillId, errors) {
  * Close the socket
  */
 export function closeSocket() {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
     if (socket) {
         socket.close();
         socket = null;

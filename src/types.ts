@@ -169,6 +169,15 @@ export interface CreateSkillInput {
   tags?: string[];
 }
 
+export interface SkillConflict {
+  existing_skill_id: string;
+  existing_skill_name: string;
+  overlap_score: number;
+  shared_keywords: string[];
+  shared_tags: string[];
+  recommendation: string;
+}
+
 export interface CreateSkillOutput {
   skill_id: string;
   path: string;
@@ -177,6 +186,7 @@ export interface CreateSkillOutput {
     layer1: number;
     layer2: number;
   };
+  conflicts?: SkillConflict[];
 }
 
 // validate_skill

@@ -6,8 +6,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../database/schema.js';
 import { generateSkillMd } from '../parser/skill-parser.js';
 import { countLayer1Tokens, countLayer2Tokens } from '../services/token-counter.js';
+import { detectSkillConflicts } from '../services/skill-matcher.js';
 export function createSkill(input) {
     const db = getDatabase();
+    // Check for conflicts with existing skills before creation
+    const existingSkills = db.getAllSkills();
+    const conflicts = detectSkillConflicts({ name: input.name, description: input.description, tags: input.tags }, existingSkills, 0.8 // 80% overlap threshold
+    );
     // Build frontmatter
     const frontmatter = {
         name: input.name,
@@ -45,7 +50,8 @@ export function createSkill(input) {
         usage_count: 0,
         success_count: 0
     });
-    return {
+    // Build result with optional conflict warnings
+    const result = {
         skill_id: skillId,
         path: `skills/${input.name}/SKILL.md`,
         created: true,
@@ -54,5 +60,10 @@ export function createSkill(input) {
             layer2: layer2Tokens
         }
     };
+    // Add conflict warnings if any detected
+    if (conflicts.length > 0) {
+        result.conflicts = conflicts;
+    }
+    return result;
 }
 //# sourceMappingURL=create-skill.js.map

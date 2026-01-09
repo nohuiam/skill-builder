@@ -13,6 +13,7 @@ import { tools, createSkill, validateSkill, analyzeDescription, listSkills, getS
 import { startHttpServer } from './http/server.js';
 import { startWebSocketServer, closeWebSocketServer } from './websocket/server.js';
 import { startInterlock, closeInterlock } from './interlock/index.js';
+import { loadSkillsFromDisk, DEFAULT_SKILL_DIRECTORIES } from './disk-loader.js';
 // Initialize database
 getDatabase();
 // Create MCP server
@@ -87,6 +88,17 @@ async function main() {
     // Parse command line arguments
     const args = process.argv.slice(2);
     const mcpOnly = args.includes('--mcp-only');
+    // Load skills from disk on startup
+    try {
+        const loadResult = await loadSkillsFromDisk(DEFAULT_SKILL_DIRECTORIES);
+        console.error(`Skill loader: ${loadResult.loaded} skills imported, ${loadResult.skipped} skipped`);
+        if (loadResult.errors.length > 0) {
+            console.error(`Skill loader errors: ${loadResult.errors.length}`);
+        }
+    }
+    catch (error) {
+        console.error('Failed to load skills from disk:', error);
+    }
     if (!mcpOnly) {
         // Start HTTP server
         try {

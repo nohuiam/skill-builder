@@ -6,9 +6,9 @@ import { Signal } from '../types.js';
 type SignalHandler = (signal: Signal) => void;
 export declare const handlers: Map<number, SignalHandler>;
 /**
- * Register a handler for a signal code
+ * Register a handler for a signal type
  */
-export declare function registerHandler(code: number, handler: SignalHandler): void;
+export declare function registerHandler(signalType: number, handler: SignalHandler): void;
 /**
  * Handle an incoming signal
  */

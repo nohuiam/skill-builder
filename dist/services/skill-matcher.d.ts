@@ -5,11 +5,20 @@
  * Uses simple text similarity and keyword matching.
  * For production, consider using embeddings or more sophisticated NLP.
  */
-import { SkillMetadata, SkillMatch } from '../types.js';
+import { SkillMetadata, SkillMatch, SkillConflict } from '../types.js';
 /**
  * Match a task description to available skills
  */
 export declare function matchSkills(taskDescription: string, skills: SkillMetadata[], minConfidence?: number): SkillMatch[];
+/**
+ * Detect conflicts between a new skill and existing skills
+ * Flags when overlap exceeds threshold (default 80%)
+ */
+export declare function detectSkillConflicts(newSkill: {
+    name: string;
+    description: string;
+    tags?: string[];
+}, existingSkills: SkillMetadata[], overlapThreshold?: number): SkillConflict[];
 /**
  * Analyze description effectiveness for triggering
  */

@@ -135,6 +135,14 @@ export interface CreateSkillInput {
     limitations?: string;
     tags?: string[];
 }
+export interface SkillConflict {
+    existing_skill_id: string;
+    existing_skill_name: string;
+    overlap_score: number;
+    shared_keywords: string[];
+    shared_tags: string[];
+    recommendation: string;
+}
 export interface CreateSkillOutput {
     skill_id: string;
     path: string;
@@ -143,6 +151,7 @@ export interface CreateSkillOutput {
         layer1: number;
         layer2: number;
     };
+    conflicts?: SkillConflict[];
 }
 export interface ValidateSkillInput {
     skill_id?: string;
@@ -235,11 +244,13 @@ export declare const SignalTypes: {
 };
 export type SignalCode = typeof SignalTypes[keyof typeof SignalTypes];
 export interface Signal {
-    code: number;
-    name: string;
-    sender: string;
+    signalType: number;
+    version: number;
     timestamp: number;
-    data?: Record<string, unknown>;
+    payload: {
+        sender: string;
+        [key: string]: unknown;
+    };
 }
 export declare const SKILL_CONFIG: {
     readonly LAYER1_MAX_TOKENS: 100;

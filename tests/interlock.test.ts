@@ -1,6 +1,6 @@
 /**
  * InterLock Tests
- * Tests for mesh communication protocol
+ * Tests for mesh communication protocol (BaNano format)
  */
 
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
@@ -8,8 +8,7 @@ import {
   encodeSignal,
   decodeSignal,
   createSignal,
-  getSignalName,
-  getSignalCode
+  getSignalName
 } from '../src/interlock/protocol.js';
 import {
   isSignalAllowed,
@@ -46,18 +45,18 @@ describe('InterLock Protocol', () => {
 
     it('should include all signal fields', () => {
       const signal: Signal = {
-        code: SignalTypes.SKILL_MATCHED,
-        name: 'SKILL_MATCHED',
-        sender: 'test-sender',
-        timestamp: Date.now(),
-        data: { test: true }
+        signalType: SignalTypes.SKILL_MATCHED,
+        version: 0x0100,
+        timestamp: Math.floor(Date.now() / 1000),
+        payload: { sender: 'test-sender', test: true }
       };
 
       const buffer = encodeSignal(signal);
       const decoded = decodeSignal(buffer);
 
-      expect(decoded.code).toBe(signal.code);
-      expect(decoded.sender).toBe(signal.sender);
+      expect(decoded).not.toBeNull();
+      expect(decoded!.signalType).toBe(signal.signalType);
+      expect(decoded!.payload.sender).toBe(signal.payload.sender);
     });
   });
 
@@ -71,9 +70,10 @@ describe('InterLock Protocol', () => {
       const buffer = encodeSignal(original);
       const decoded = decodeSignal(buffer);
 
-      expect(decoded.code).toBe(original.code);
-      expect(decoded.sender).toBe(original.sender);
-      expect(decoded.data).toEqual(original.data);
+      expect(decoded).not.toBeNull();
+      expect(decoded!.signalType).toBe(original.signalType);
+      expect(decoded!.payload.sender).toBe(original.payload.sender);
+      expect(decoded!.payload.skill_id).toBe(original.payload.skill_id);
     });
 
     it('should preserve timestamp', () => {
@@ -81,37 +81,40 @@ describe('InterLock Protocol', () => {
       const buffer = encodeSignal(original);
       const decoded = decodeSignal(buffer);
 
-      expect(decoded.timestamp).toBe(original.timestamp);
+      expect(decoded).not.toBeNull();
+      expect(decoded!.timestamp).toBe(original.timestamp);
     });
 
-    it('should handle signal without data', () => {
+    it('should handle signal without extra data', () => {
       const original = createSignal(SignalTypes.HEARTBEAT, 'test');
       const buffer = encodeSignal(original);
       const decoded = decodeSignal(buffer);
 
-      expect(decoded.data).toBeUndefined();
+      expect(decoded).not.toBeNull();
+      expect(decoded!.payload.sender).toBe('test');
     });
   });
 
   describe('createSignal', () => {
     it('should create signal with timestamp', () => {
-      const before = Date.now();
+      const before = Math.floor(Date.now() / 1000);
       const signal = createSignal(SignalTypes.SKILL_CREATED, 'test');
-      const after = Date.now();
+      const after = Math.floor(Date.now() / 1000);
 
       expect(signal.timestamp).toBeGreaterThanOrEqual(before);
       expect(signal.timestamp).toBeLessThanOrEqual(after);
     });
 
-    it('should set correct signal name', () => {
+    it('should set correct signal type', () => {
       const signal = createSignal(SignalTypes.SKILL_MATCHED, 'test');
-      expect(signal.name).toBe('SKILL_MATCHED');
+      expect(signal.signalType).toBe(SignalTypes.SKILL_MATCHED);
     });
 
-    it('should include data when provided', () => {
+    it('should include data in payload when provided', () => {
       const data = { skill_id: 'test', confidence: 0.9 };
       const signal = createSignal(SignalTypes.SKILL_MATCHED, 'test', data);
-      expect(signal.data).toEqual(data);
+      expect(signal.payload.skill_id).toBe('test');
+      expect(signal.payload.confidence).toBe(0.9);
     });
   });
 
@@ -125,20 +128,9 @@ describe('InterLock Protocol', () => {
     });
 
     it('should return UNKNOWN for unknown codes', () => {
-      // 0xBB is not defined in SignalTypes (0xFF is OPERATION_COMPLETE)
+      // 0xBB is not defined in SignalTypes
       const name = getSignalName(0xBB);
       expect(name).toContain('UNKNOWN');
-    });
-  });
-
-  describe('getSignalCode', () => {
-    it('should return correct code for known names', () => {
-      expect(getSignalCode('SKILL_CREATED')).toBe(SignalTypes.SKILL_CREATED);
-      expect(getSignalCode('HEARTBEAT')).toBe(SignalTypes.HEARTBEAT);
-    });
-
-    it('should return undefined for unknown names', () => {
-      expect(getSignalCode('UNKNOWN_SIGNAL')).toBeUndefined();
     });
   });
 });
@@ -158,10 +150,10 @@ describe('Tumbler', () => {
     it('should block non-whitelisted signals', () => {
       removeFromWhitelist('SKILL_DEPRECATED');
       const signal: Signal = {
-        code: SignalTypes.SKILL_DEPRECATED,
-        name: 'SKILL_DEPRECATED',
-        sender: 'test',
-        timestamp: Date.now()
+        signalType: SignalTypes.SKILL_DEPRECATED,
+        version: 0x0100,
+        timestamp: Math.floor(Date.now() / 1000),
+        payload: { sender: 'test' }
       };
       expect(isSignalAllowed(signal)).toBe(false);
     });
@@ -224,10 +216,10 @@ describe('Handlers', () => {
       registerHandler(0xF2, mockHandler);
 
       const signal: Signal = {
-        code: 0xF2,
-        name: 'TEST_SIGNAL',
-        sender: 'test',
-        timestamp: Date.now()
+        signalType: 0xF2,
+        version: 0x0100,
+        timestamp: Math.floor(Date.now() / 1000),
+        payload: { sender: 'test' }
       };
 
       handleSignal(signal);
@@ -236,10 +228,10 @@ describe('Handlers', () => {
 
     it('should not throw for unhandled signals', () => {
       const signal: Signal = {
-        code: 0xFE,
-        name: 'UNHANDLED',
-        sender: 'test',
-        timestamp: Date.now()
+        signalType: 0xFE,
+        version: 0x0100,
+        timestamp: Math.floor(Date.now() / 1000),
+        payload: { sender: 'test' }
       };
 
       expect(() => handleSignal(signal)).not.toThrow();
@@ -281,9 +273,9 @@ describe('Signal Roundtrip', () => {
       const buffer = encodeSignal(original);
       const decoded = decodeSignal(buffer);
 
-      expect(decoded.code).toBe(original.code);
-      expect(decoded.name).toBe(original.name);
-      expect(decoded.sender).toBe(original.sender);
+      expect(decoded).not.toBeNull();
+      expect(decoded!.signalType).toBe(original.signalType);
+      expect(decoded!.payload.sender).toBe(original.payload.sender);
     }
   });
 
@@ -299,7 +291,8 @@ describe('Signal Roundtrip', () => {
     const buffer = encodeSignal(signal);
     const decoded = decodeSignal(buffer);
 
-    expect(decoded.data).toEqual(largeData);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.payload.items).toEqual(largeData.items);
   });
 
   it('should handle unicode in sender and data', () => {
@@ -310,7 +303,8 @@ describe('Signal Roundtrip', () => {
     const buffer = encodeSignal(signal);
     const decoded = decodeSignal(buffer);
 
-    expect(decoded.sender).toBe('测试-tëst');
-    expect((decoded.data as { message: string }).message).toBe('Hello 世界 🌍');
+    expect(decoded).not.toBeNull();
+    expect(decoded!.payload.sender).toBe('测试-tëst');
+    expect((decoded!.payload as unknown as { message: string }).message).toBe('Hello 世界 🌍');
   });
 });

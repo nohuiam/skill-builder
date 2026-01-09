@@ -17,6 +17,8 @@ const __dirname = dirname(__filename);
 
 let socket: dgram.Socket | null = null;
 let serverPort: number = 3029;
+let heartbeatTimer: NodeJS.Timeout | null = null;
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 
 interface Peer {
   name: string;
@@ -71,9 +73,34 @@ export function startSocket(port: number): dgram.Socket {
 
   socket.bind(port, () => {
     console.error(`InterLock socket listening on port ${port}`);
+    startHeartbeat();
   });
 
   return socket;
+}
+
+/**
+ * Start heartbeat broadcasting
+ */
+function startHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+  }
+
+  heartbeatTimer = setInterval(() => {
+    const signal = createSignal(SignalTypes.HEARTBEAT, 'skill-builder', {
+      status: 'alive',
+      uptime: process.uptime()
+    });
+    broadcastSignal(signal);
+  }, HEARTBEAT_INTERVAL);
+
+  // Send initial heartbeat immediately
+  const signal = createSignal(SignalTypes.HEARTBEAT, 'skill-builder', {
+    status: 'alive',
+    uptime: process.uptime()
+  });
+  broadcastSignal(signal);
 }
 
 /**
@@ -172,6 +199,10 @@ export function emitSkillValidationFailed(skillId: string, errors: string[]): vo
  * Close the socket
  */
 export function closeSocket(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
   if (socket) {
     socket.close();
     socket = null;

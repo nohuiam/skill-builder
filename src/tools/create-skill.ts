@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../database/schema.js';
 import { generateSkillMd } from '../parser/skill-parser.js';
 import { countLayer1Tokens, countLayer2Tokens } from '../services/token-counter.js';
+import { detectSkillConflicts } from '../services/skill-matcher.js';
 import {
   CreateSkillInput,
   CreateSkillOutput,
@@ -16,6 +17,22 @@ import {
 
 export function createSkill(input: CreateSkillInput): CreateSkillOutput {
   const db = getDatabase();
+
+  // Validate skill name (alphanumeric, hyphens, underscores only, max 100 chars)
+  const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+  if (!input.name || input.name.length > 100 || !NAME_PATTERN.test(input.name)) {
+    throw new Error(
+      'Invalid skill name. Must be 1-100 characters, alphanumeric with hyphens and underscores only.'
+    );
+  }
+
+  // Check for conflicts with existing skills before creation
+  const existingSkills = db.getAllSkills();
+  const conflicts = detectSkillConflicts(
+    { name: input.name, description: input.description, tags: input.tags },
+    existingSkills,
+    0.8 // 80% overlap threshold
+  );
 
   // Build frontmatter
   const frontmatter: SkillFrontmatter = {
@@ -60,7 +77,8 @@ export function createSkill(input: CreateSkillInput): CreateSkillOutput {
     success_count: 0
   });
 
-  return {
+  // Build result with optional conflict warnings
+  const result: CreateSkillOutput = {
     skill_id: skillId,
     path: `skills/${input.name}/SKILL.md`,
     created: true,
@@ -69,4 +87,11 @@ export function createSkill(input: CreateSkillInput): CreateSkillOutput {
       layer2: layer2Tokens
     }
   };
+
+  // Add conflict warnings if any detected
+  if (conflicts.length > 0) {
+    result.conflicts = conflicts;
+  }
+
+  return result;
 }

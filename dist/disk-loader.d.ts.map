@@ -1,0 +1,1 @@
+{"version":3,"file":"disk-loader.d.ts","sourceRoot":"","sources":["../src/disk-loader.ts"],"names":[],"mappings":"AAAA;;;GAGG;AASH,UAAU,UAAU;IAClB,MAAM,EAAE,MAAM,CAAC;IACf,OAAO,EAAE,MAAM,CAAC;IAChB,MAAM,EAAE,MAAM,EAAE,CAAC;CAClB;AAuCD;;GAEG;AACH,wBAAsB,kBAAkB,CAAC,WAAW,EAAE,MAAM,EAAE,GAAG,OAAO,CAAC,UAAU,CAAC,CAwFnF;AAED;;GAEG;AACH,eAAO,MAAM,yBAAyB,UAGrC,CAAC"}

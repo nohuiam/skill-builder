@@ -1,1 +1,1 @@
-{"version":3,"file":"create-skill.d.ts","sourceRoot":"","sources":["../../src/tools/create-skill.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAMH,OAAO,EACL,gBAAgB,EAChB,iBAAiB,EAGlB,MAAM,aAAa,CAAC;AAErB,wBAAgB,WAAW,CAAC,KAAK,EAAE,gBAAgB,GAAG,iBAAiB,CAuDtE"}
+{"version":3,"file":"create-skill.d.ts","sourceRoot":"","sources":["../../src/tools/create-skill.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAOH,OAAO,EACL,gBAAgB,EAChB,iBAAiB,EAGlB,MAAM,aAAa,CAAC;AAErB,wBAAgB,WAAW,CAAC,KAAK,EAAE,gBAAgB,GAAG,iBAAiB,CAuEtE"}

@@ -4,30 +4,32 @@
  */
 import { SignalTypes } from '../types.js';
 import { getDatabase } from '../database/schema.js';
+import { getSignalName } from './protocol.js';
 // Registered handlers
 export const handlers = new Map();
 /**
- * Register a handler for a signal code
+ * Register a handler for a signal type
  */
-export function registerHandler(code, handler) {
-    handlers.set(code, handler);
+export function registerHandler(signalType, handler) {
+    handlers.set(signalType, handler);
 }
 /**
  * Handle an incoming signal
  */
 export function handleSignal(signal) {
-    const handler = handlers.get(signal.code);
+    const handler = handlers.get(signal.signalType);
+    const signalName = getSignalName(signal.signalType);
     if (handler) {
         try {
             handler(signal);
         }
         catch (error) {
-            console.error(`Error handling signal ${signal.name}:`, error);
+            console.error(`Error handling signal ${signalName}:`, error);
         }
     }
     else {
         // Unknown signal - log but don't error
-        console.error(`No handler for signal: ${signal.name} (0x${signal.code.toString(16)})`);
+        console.error(`No handler for signal: ${signalName} (0x${signal.signalType.toString(16)})`);
     }
 }
 // =============================================================================
@@ -35,52 +37,52 @@ export function handleSignal(signal) {
 // =============================================================================
 // Handle EXPERIENCE_RECORDED from experience-layer
 registerHandler(SignalTypes.EXPERIENCE_RECORDED, (signal) => {
-    console.error(`Received EXPERIENCE_RECORDED from ${signal.sender}`);
+    const { sender } = signal.payload;
+    console.error(`Received EXPERIENCE_RECORDED from ${sender}`);
     // Could update skill recommendations based on experience outcomes
 });
 // Handle PATTERN_EMERGED from experience-layer
 registerHandler(SignalTypes.PATTERN_EMERGED, (signal) => {
-    console.error(`Received PATTERN_EMERGED from ${signal.sender}`);
+    const { sender, pattern_id, description } = signal.payload;
+    console.error(`Received PATTERN_EMERGED from ${sender}`);
     // Could suggest creating a new skill based on the pattern
-    if (signal.data) {
-        const { pattern_id, description } = signal.data;
+    if (pattern_id !== undefined) {
         console.error(`Pattern ${pattern_id}: ${description}`);
     }
 });
 // Handle LESSON_EXTRACTED from experience-layer
 registerHandler(SignalTypes.LESSON_EXTRACTED, (signal) => {
-    console.error(`Received LESSON_EXTRACTED from ${signal.sender}`);
+    const { sender, lesson_id, statement } = signal.payload;
+    console.error(`Received LESSON_EXTRACTED from ${sender}`);
     // Could auto-generate a skill from the lesson
-    if (signal.data) {
-        const { lesson_id, statement } = signal.data;
+    if (lesson_id !== undefined) {
         console.error(`Lesson ${lesson_id}: ${statement}`);
     }
 });
 // Handle OPERATION_COMPLETE from any server
 registerHandler(SignalTypes.OPERATION_COMPLETE, (signal) => {
     // Track if operation used a skill
-    if (signal.data) {
-        const { skill_id, outcome } = signal.data;
-        if (skill_id && outcome) {
-            try {
-                const db = getDatabase();
-                db.insertUsage({
-                    skill_id,
-                    outcome: outcome,
-                    context: signal.data,
-                    created_at: Date.now()
-                });
-            }
-            catch (error) {
-                console.error('Failed to record skill usage:', error);
-            }
+    const { sender, skill_id, outcome, ...rest } = signal.payload;
+    if (skill_id && outcome) {
+        try {
+            const db = getDatabase();
+            db.insertUsage({
+                skill_id,
+                outcome: outcome,
+                context: { sender, ...rest },
+                created_at: Date.now()
+            });
+        }
+        catch (error) {
+            console.error('Failed to record skill usage:', error);
         }
     }
 });
 // Handle HEARTBEAT
-registerHandler(SignalTypes.HEARTBEAT, (signal) => {
+registerHandler(SignalTypes.HEARTBEAT, (_signal) => {
     // Just log heartbeats at debug level
-    // console.error(`Heartbeat from ${signal.sender}`);
+    // const { sender } = signal.payload;
+    // console.error(`Heartbeat from ${sender}`);
 });
 /**
  * Initialize default handlers

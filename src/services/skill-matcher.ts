@@ -6,7 +6,7 @@
  * For production, consider using embeddings or more sophisticated NLP.
  */
 
-import { SkillMetadata, SkillMatch, SKILL_CONFIG } from '../types.js';
+import { SkillMetadata, SkillMatch, SkillConflict, SKILL_CONFIG } from '../types.js';
 
 /**
  * Match a task description to available skills
@@ -16,6 +16,9 @@ export function matchSkills(
   skills: SkillMetadata[],
   minConfidence: number = SKILL_CONFIG.MIN_MATCH_CONFIDENCE
 ): SkillMatch[] {
+  // Clamp confidence to valid range [0, 1]
+  minConfidence = Math.max(0, Math.min(1, minConfidence));
+
   const matches: SkillMatch[] = [];
 
   const taskTokens = tokenize(taskDescription.toLowerCase());
@@ -205,6 +208,79 @@ function calculateTagMatch(taskTokens: string[], tags: string[]): number {
   }
 
   return matches / tags.length;
+}
+
+/**
+ * Detect conflicts between a new skill and existing skills
+ * Flags when overlap exceeds threshold (default 80%)
+ */
+export function detectSkillConflicts(
+  newSkill: { name: string; description: string; tags?: string[] },
+  existingSkills: SkillMetadata[],
+  overlapThreshold: number = 0.8
+): SkillConflict[] {
+  const conflicts: SkillConflict[] = [];
+
+  const newTokens = tokenize(newSkill.description.toLowerCase());
+  const newKeywords = extractKeywords(newSkill.description);
+  const newTags = (newSkill.tags || []).map(t => t.toLowerCase());
+  const newNameTokens = tokenize(newSkill.name.toLowerCase());
+
+  for (const existing of existingSkills) {
+    // Skip deprecated skills
+    if (existing.deprecated_at) continue;
+
+    const existingTokens = tokenize(existing.description.toLowerCase());
+    const existingKeywords = extractKeywords(existing.description);
+    const existingTags = (existing.tags || []).map(t => t.toLowerCase());
+    const existingNameTokens = tokenize(existing.name.toLowerCase());
+
+    // Calculate multiple overlap dimensions
+    const descOverlap = calculateOverlap(newTokens, existingTokens);
+    const keywordOverlap = calculateOverlap(newKeywords, existingKeywords);
+    const tagOverlap = newTags.length > 0 && existingTags.length > 0
+      ? calculateOverlap(newTags, existingTags)
+      : 0;
+    const nameOverlap = calculateOverlap(newNameTokens, existingNameTokens);
+
+    // Weighted composite score
+    const overlapScore = (
+      descOverlap * 0.4 +
+      keywordOverlap * 0.3 +
+      tagOverlap * 0.15 +
+      nameOverlap * 0.15
+    );
+
+    if (overlapScore >= overlapThreshold) {
+      // Find shared keywords and tags
+      const sharedKeywords = newKeywords.filter(k => existingKeywords.includes(k));
+      const sharedTags = newTags.filter(t => existingTags.includes(t));
+
+      // Generate recommendation
+      let recommendation: string;
+      if (overlapScore >= 0.95) {
+        recommendation = `Very high overlap (${Math.round(overlapScore * 100)}%). Consider updating existing skill "${existing.name}" instead of creating a new one.`;
+      } else if (overlapScore >= 0.9) {
+        recommendation = `High overlap (${Math.round(overlapScore * 100)}%). Consider merging with "${existing.name}" or differentiating the use cases more clearly.`;
+      } else {
+        recommendation = `Significant overlap (${Math.round(overlapScore * 100)}%). Ensure the skills have clearly distinct purposes to avoid matching ambiguity.`;
+      }
+
+      conflicts.push({
+        existing_skill_id: existing.id,
+        existing_skill_name: existing.name,
+        overlap_score: Math.round(overlapScore * 100) / 100,
+        shared_keywords: sharedKeywords,
+        shared_tags: sharedTags,
+        recommendation
+      });
+    }
+  }
+
+  // Sort by overlap score descending
+  conflicts.sort((a, b) => b.overlap_score - a.overlap_score);
+
+  return conflicts;
 }
 
 /**
