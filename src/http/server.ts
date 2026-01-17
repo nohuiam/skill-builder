@@ -5,6 +5,7 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import { Server } from 'http';
+import { randomUUID } from 'crypto';
 import { getDatabase } from '../database/schema.js';
 import { createSkill } from '../tools/create-skill.js';
 import { validateSkill } from '../tools/validate-skill.js';
@@ -14,6 +15,55 @@ import { getSkill } from '../tools/get-skill.js';
 import { updateSkill } from '../tools/update-skill.js';
 import { matchSkill } from '../tools/match-skill.js';
 import { recordSkillUsage } from '../tools/record-skill-usage.js';
+import { tools } from '../tools/index.js';
+
+// Tool handler map for gateway integration
+const TOOL_HANDLERS: Record<string, (args: any) => any> = {
+  create_skill: createSkill,
+  validate_skill: validateSkill,
+  analyze_description: analyzeDescription,
+  list_skills: listSkills,
+  get_skill: getSkill,
+  update_skill: updateSkill,
+  match_skill: matchSkill,
+  record_skill_usage: recordSkillUsage
+};
+
+const SERVER_NAME = 'skill-builder';
+
+// Trace context for distributed tracing (Linus audit recommendation)
+interface TraceContext {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+}
+
+// Extend Express Request
+declare global {
+  namespace Express {
+    interface Request {
+      trace?: TraceContext;
+    }
+  }
+}
+
+function createTraceContext(parent?: Partial<TraceContext>): TraceContext {
+  return {
+    traceId: parent?.traceId ?? randomUUID(),
+    spanId: randomUUID(),
+    parentSpanId: parent?.spanId
+  };
+}
+
+function parseTraceparent(header: string): { traceId: string; parentSpanId: string } | null {
+  const parts = header.split('-');
+  if (parts.length < 3) return null;
+  return { traceId: parts[1], parentSpanId: parts[2] };
+}
+
+function formatTraceparent(trace: TraceContext): string {
+  return `00-${trace.traceId}-${trace.spanId}-01`;
+}
 
 let httpServer: Server | null = null;
 const startTime = Date.now();
@@ -26,14 +76,47 @@ export function startHttpServer(port: number): Server {
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, traceparent');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
     next();
   });
 
-  // Health check
+  // Distributed tracing middleware (Linus audit recommendation)
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    // Skip tracing for health checks
+    if (req.path === '/health') {
+      next();
+      return;
+    }
+
+    // Extract or create trace context
+    const traceparent = req.headers['traceparent'] as string;
+    let trace: TraceContext;
+
+    if (traceparent) {
+      const parsed = parseTraceparent(traceparent);
+      if (parsed) {
+        trace = createTraceContext({ traceId: parsed.traceId, spanId: parsed.parentSpanId });
+      } else {
+        trace = createTraceContext();
+      }
+    } else {
+      trace = createTraceContext();
+    }
+
+    req.trace = trace;
+
+    // Set response headers for trace propagation
+    res.setHeader('X-Trace-ID', trace.traceId);
+    res.setHeader('X-Span-ID', trace.spanId);
+    res.setHeader('traceparent', formatTraceparent(trace));
+
+    next();
+  });
+
+  // Health check (standardized cognitive server format)
   app.get('/health', (req: Request, res: Response) => {
     const db = getDatabase();
     const stats = db.getStats();
@@ -41,13 +124,15 @@ export function startHttpServer(port: number): Server {
       status: 'healthy',
       server: 'skill-builder',
       version: '1.0.0',
-      uptime: Date.now() - startTime,
+      uptime_ms: Date.now() - startTime,
+      timestamp: new Date().toISOString(),
       stats: {
         skills: stats.totalSkills,
         activeSkills: stats.activeSkills,
         totalUsages: stats.totalUsages,
         successRate: stats.overallSuccessRate
-      }
+      },
+      interlock: null  // skill-builder does not have InterLock
     });
   });
 
@@ -213,6 +298,35 @@ export function startHttpServer(port: number): Server {
       }
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // Gateway integration: List all MCP tools
+  app.get('/api/tools', (req: Request, res: Response) => {
+    const toolList = tools.map(t => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema
+    }));
+    res.json({ tools: toolList, count: toolList.length });
+  });
+
+  // Gateway integration: Execute MCP tool via HTTP
+  app.post('/api/tools/:toolName', async (req: Request, res: Response) => {
+    const { toolName } = req.params;
+    const args = req.body.arguments || req.body;
+
+    const handler = TOOL_HANDLERS[toolName];
+    if (!handler) {
+      res.status(404).json({ success: false, error: `Tool '${toolName}' not found` });
+      return;
+    }
+
+    try {
+      const result = await handler(args);
+      res.json({ success: true, result });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error instanceof Error ? error.message : String(error) });
     }
   });
 
