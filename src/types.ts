@@ -21,6 +21,7 @@ export interface SkillMetadata {
   success_rate: number;
   created_at: number;
   deprecated_at?: number;
+  cognitive_integration?: CognitiveIntegration;
 }
 
 /**
@@ -33,6 +34,7 @@ export interface Skill extends SkillMetadata {
   updated_at?: number;
   success_count: number;
   bundled_files: BundledFile[];
+  cognitive_integration?: CognitiveIntegration;
 }
 
 /**
@@ -68,6 +70,41 @@ export interface SkillFrontmatter {
   name: string;
   description: string;
   tags?: string[];
+  triggers?: string[];      // Keywords that trigger this skill
+  // Cognitive ecosystem integration (RULE #3 in CLAUDE.md)
+  cognitive_integration?: CognitiveIntegration;
+  integrations?: string[];  // Other skills this skill integrates with
+  signals?: string[];       // InterLock signals this skill emits
+  instance?: string;        // Instance type hint
+}
+
+/**
+ * Cognitive Integration Configuration
+ * Required for skills to participate in the 7-step cognitive loop
+ */
+export interface CognitiveIntegration {
+  awareness: boolean | 'optional';                     // Track with consciousness-mcp (should always be true)
+  ethics_check: boolean | 'optional' | 'conditional';  // Evaluate with tenets-server for destructive ops
+  verification: boolean | 'optional' | 'conditional';  // Validate with verifier-mcp for factual output
+  experience_record: boolean;                          // MANDATORY - record outcomes with experience-layer
+  learning?: boolean | 'optional';                     // Extract patterns from outcomes
+}
+
+/**
+ * Result of cognitive integration validation
+ */
+export interface CognitiveValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  detected_phases: {
+    awareness: boolean;
+    ethics: boolean;
+    verification: boolean;
+    experience: boolean;
+    learning: boolean;
+  };
+  recommendations: string[];
 }
 
 /**
@@ -139,6 +176,7 @@ export interface ValidationResult {
   };
   progressive_disclosure_ok: boolean;
   description_analysis?: DescriptionAnalysis;
+  cognitive_validation?: CognitiveValidationResult;
 }
 
 /**
@@ -331,7 +369,7 @@ export const SKILL_CONFIG = {
   MAX_DESCRIPTION_LENGTH: 500,
 
   // Matching thresholds
-  MIN_MATCH_CONFIDENCE: 0.3,
+  MIN_MATCH_CONFIDENCE: 0.05,  // Lowered from 0.3 to support short queries
   HIGH_MATCH_CONFIDENCE: 0.7,
 
   // Skill directories to index
@@ -355,6 +393,7 @@ export interface SkillRow {
   token_count_layer2: number;
   file_path: string | null;
   tags: string | null;  // JSON string
+  cognitive_metadata: string | null;  // JSON string of CognitiveIntegration
   created_at: number;
   updated_at: number | null;
   deprecated_at: number | null;

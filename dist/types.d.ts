@@ -16,6 +16,7 @@ export interface SkillMetadata {
     success_rate: number;
     created_at: number;
     deprecated_at?: number;
+    cognitive_integration?: CognitiveIntegration;
 }
 /**
  * Full skill with Layer 1 + Layer 2 content
@@ -27,6 +28,7 @@ export interface Skill extends SkillMetadata {
     updated_at?: number;
     success_count: number;
     bundled_files: BundledFile[];
+    cognitive_integration?: CognitiveIntegration;
 }
 /**
  * Layer 3 - Bundled reference files
@@ -55,6 +57,38 @@ export interface SkillFrontmatter {
     name: string;
     description: string;
     tags?: string[];
+    triggers?: string[];
+    cognitive_integration?: CognitiveIntegration;
+    integrations?: string[];
+    signals?: string[];
+    instance?: string;
+}
+/**
+ * Cognitive Integration Configuration
+ * Required for skills to participate in the 7-step cognitive loop
+ */
+export interface CognitiveIntegration {
+    awareness: boolean | 'optional';
+    ethics_check: boolean | 'optional' | 'conditional';
+    verification: boolean | 'optional' | 'conditional';
+    experience_record: boolean;
+    learning?: boolean | 'optional';
+}
+/**
+ * Result of cognitive integration validation
+ */
+export interface CognitiveValidationResult {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    detected_phases: {
+        awareness: boolean;
+        ethics: boolean;
+        verification: boolean;
+        experience: boolean;
+        learning: boolean;
+    };
+    recommendations: string[];
 }
 /**
  * Markdown body sections in SKILL.md
@@ -113,6 +147,7 @@ export interface ValidationResult {
     };
     progressive_disclosure_ok: boolean;
     description_analysis?: DescriptionAnalysis;
+    cognitive_validation?: CognitiveValidationResult;
 }
 /**
  * Analysis of description field effectiveness
@@ -257,7 +292,7 @@ export declare const SKILL_CONFIG: {
     readonly LAYER2_MAX_TOKENS: 5000;
     readonly MIN_DESCRIPTION_LENGTH: 20;
     readonly MAX_DESCRIPTION_LENGTH: 500;
-    readonly MIN_MATCH_CONFIDENCE: 0.3;
+    readonly MIN_MATCH_CONFIDENCE: 0.05;
     readonly HIGH_MATCH_CONFIDENCE: 0.7;
     readonly SKILL_DIRECTORIES: readonly ["/Users/macbook/Documents/claude_home/repo/claude-skills/", "/Users/macbook/Documents/claude_home/repo/bop/skills/"];
 };
@@ -271,6 +306,7 @@ export interface SkillRow {
     token_count_layer2: number;
     file_path: string | null;
     tags: string | null;
+    cognitive_metadata: string | null;
     created_at: number;
     updated_at: number | null;
     deprecated_at: number | null;

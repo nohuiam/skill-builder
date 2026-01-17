@@ -30,7 +30,7 @@ export const SKILL_CONFIG = {
     MIN_DESCRIPTION_LENGTH: 20,
     MAX_DESCRIPTION_LENGTH: 500,
     // Matching thresholds
-    MIN_MATCH_CONFIDENCE: 0.3,
+    MIN_MATCH_CONFIDENCE: 0.05, // Lowered from 0.3 to support short queries
     HIGH_MATCH_CONFIDENCE: 0.7,
     // Skill directories to index
     SKILL_DIRECTORIES: [
