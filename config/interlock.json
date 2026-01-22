@@ -2,6 +2,8 @@
   "server": {
     "name": "skill-builder",
     "port": 3029,
+    "httpPort": 8029,
+    "wsPort": 9029,
     "version": "1.0.0"
   },
   "signals": {
@@ -9,21 +11,24 @@
       { "code": "0xF0", "name": "EXPERIENCE_RECORDED", "from": "experience-layer" },
       { "code": "0xF1", "name": "PATTERN_EMERGED", "from": "experience-layer" },
       { "code": "0xF2", "name": "LESSON_EXTRACTED", "from": "experience-layer" },
+      { "code": "0x53", "name": "PERCOLATION_COMPLETE", "from": "percolation-server" },
+      { "code": "0x54", "name": "PERCOLATION_FAILED", "from": "percolation-server" },
       { "code": "0xFF", "name": "OPERATION_COMPLETE", "from": "*" },
       { "code": "0x00", "name": "HEARTBEAT", "from": "*" }
     ],
     "emit": [
-      { "code": "0xA0", "name": "SKILL_CREATED", "to": ["consciousness", "experience-layer"] },
-      { "code": "0xA1", "name": "SKILL_MATCHED", "to": ["consciousness"] },
+      { "code": "0xA0", "name": "SKILL_CREATED", "to": ["consciousness-mcp", "experience-layer"] },
+      { "code": "0xA1", "name": "SKILL_MATCHED", "to": ["consciousness-mcp"] },
       { "code": "0xA2", "name": "SKILL_USED", "to": ["experience-layer"] },
-      { "code": "0xA3", "name": "SKILL_DEPRECATED", "to": ["consciousness"] },
-      { "code": "0xA4", "name": "SKILL_VALIDATION_FAILED", "to": ["consciousness"] }
+      { "code": "0xA3", "name": "SKILL_DEPRECATED", "to": ["consciousness-mcp"] },
+      { "code": "0xA4", "name": "SKILL_VALIDATION_FAILED", "to": ["consciousness-mcp"] }
     ]
   },
   "peers": [
-    { "name": "consciousness", "port": 3028 },
+    { "name": "consciousness-mcp", "port": 3028 },
     { "name": "experience-layer", "port": 3031 },
     { "name": "tenets-server", "port": 3027 },
+    { "name": "percolation-server", "port": 3030 },
     { "name": "context-guardian", "port": 3001 },
     { "name": "tool-registry", "port": 3004 },
     { "name": "trinity-coordinator", "port": 3012 }
@@ -33,6 +38,8 @@
       "EXPERIENCE_RECORDED",
       "PATTERN_EMERGED",
       "LESSON_EXTRACTED",
+      "PERCOLATION_COMPLETE",
+      "PERCOLATION_FAILED",
       "OPERATION_COMPLETE",
       "HEARTBEAT"
     ]
