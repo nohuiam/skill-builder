@@ -9,6 +9,40 @@ import { countLayer1Tokens, countLayer2Tokens } from '../services/token-counter.
 import { UpdateSkillInput, UpdateSkillOutput } from '../types.js';
 
 export function updateSkill(input: UpdateSkillInput): UpdateSkillOutput {
+  // Validate input
+  if (!input || typeof input !== 'object') {
+    throw new Error('Invalid input: expected an object with skill_id and updates');
+  }
+  if (!input.skill_id || typeof input.skill_id !== 'string') {
+    throw new Error('skill_id is required and must be a string');
+  }
+  if (input.skill_id.trim().length === 0) {
+    throw new Error('skill_id cannot be empty');
+  }
+  if (!input.updates || typeof input.updates !== 'object') {
+    throw new Error('updates is required and must be an object');
+  }
+  // Validate update fields if provided
+  if (input.updates.name !== undefined) {
+    if (typeof input.updates.name !== 'string' || input.updates.name.trim().length === 0) {
+      throw new Error('updates.name must be a non-empty string');
+    }
+    if (input.updates.name.length > 100) {
+      throw new Error('updates.name exceeds maximum length of 100 characters');
+    }
+  }
+  if (input.updates.description !== undefined) {
+    if (typeof input.updates.description !== 'string') {
+      throw new Error('updates.description must be a string');
+    }
+    if (input.updates.description.length > 10000) {
+      throw new Error('updates.description exceeds maximum length of 10000 characters');
+    }
+  }
+  if (input.updates.tags !== undefined && !Array.isArray(input.updates.tags)) {
+    throw new Error('updates.tags must be an array');
+  }
+
   const db = getDatabase();
 
   // Get existing skill

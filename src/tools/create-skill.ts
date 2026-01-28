@@ -18,12 +18,33 @@ import {
 export function createSkill(input: CreateSkillInput): CreateSkillOutput {
   const db = getDatabase();
 
+  // Validate input object
+  if (!input || typeof input !== 'object') {
+    throw new Error('Invalid input: expected an object with name and description');
+  }
+
   // Validate skill name (alphanumeric, hyphens, underscores only, max 100 chars)
   const NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
   if (!input.name || input.name.length > 100 || !NAME_PATTERN.test(input.name)) {
     throw new Error(
       'Invalid skill name. Must be 1-100 characters, alphanumeric with hyphens and underscores only.'
     );
+  }
+
+  // Validate description
+  if (!input.description || typeof input.description !== 'string') {
+    throw new Error('description is required and must be a string');
+  }
+  if (input.description.trim().length === 0) {
+    throw new Error('description cannot be empty');
+  }
+  if (input.description.length > 10000) {
+    throw new Error('description exceeds maximum length of 10000 characters');
+  }
+
+  // Validate tags if provided
+  if (input.tags !== undefined && !Array.isArray(input.tags)) {
+    throw new Error('tags must be an array of strings');
   }
 
   // Check for conflicts with existing skills before creation
