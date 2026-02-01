@@ -47,11 +47,37 @@ function parseFrontmatter(frontmatter) {
     }
     try {
         const parsed = parseYAML(frontmatter);
-        return {
+        const result = {
             name: String(parsed.name || ''),
             description: String(parsed.description || ''),
             tags: Array.isArray(parsed.tags) ? parsed.tags.map(String) : undefined
         };
+        // Parse cognitive_integration if present
+        if (parsed.cognitive_integration && typeof parsed.cognitive_integration === 'object') {
+            const ci = parsed.cognitive_integration;
+            result.cognitive_integration = {
+                awareness: parseCognitiveFieldSimple(ci.awareness),
+                ethics_check: parseCognitiveField(ci.ethics_check),
+                verification: parseCognitiveField(ci.verification),
+                experience_record: ci.experience_record === true,
+                learning: ci.learning !== undefined ? parseCognitiveFieldSimple(ci.learning) : undefined
+            };
+        }
+        // Parse optional extended fields
+        if (Array.isArray(parsed.triggers)) {
+            result.triggers = parsed.triggers.map(String);
+        }
+        if (typeof parsed.instance === 'string' &&
+            ['planner', 'builder', 'tester', 'orchestrator'].includes(parsed.instance)) {
+            result.instance = parsed.instance;
+        }
+        if (Array.isArray(parsed.integrations)) {
+            result.integrations = parsed.integrations.map(String);
+        }
+        if (Array.isArray(parsed.signals)) {
+            result.signals = parsed.signals.map(String);
+        }
+        return result;
     }
     catch (error) {
         console.error('Failed to parse YAML frontmatter:', error);
@@ -60,6 +86,44 @@ function parseFrontmatter(frontmatter) {
             description: ''
         };
     }
+}
+/**
+ * Parse a cognitive field value that can be boolean, 'optional', or 'conditional'
+ */
+function parseCognitiveField(value) {
+    if (value === true || value === false) {
+        return value;
+    }
+    if (value === 'optional' || value === 'conditional') {
+        return value;
+    }
+    return false;
+}
+/**
+ * Parse a cognitive field value that only accepts boolean or 'optional' (not 'conditional')
+ * Used for awareness and learning fields
+ */
+function parseCognitiveFieldSimple(value) {
+    if (value === true || value === false) {
+        return value;
+    }
+    if (value === 'optional') {
+        return value;
+    }
+    // If 'conditional' is provided for a simple field, treat as 'optional'
+    if (value === 'conditional') {
+        return 'optional';
+    }
+    return false;
+}
+/**
+ * Format a cognitive field value for YAML output
+ */
+function formatCognitiveValue(value) {
+    if (value === true || value === false) {
+        return String(value);
+    }
+    return value || 'false';
 }
 /**
  * Parse Markdown body into sections
@@ -165,6 +229,31 @@ export function generateSkillMd(frontmatter, body) {
     }
     if (frontmatter.tags && frontmatter.tags.length > 0) {
         lines.push(`tags: [${frontmatter.tags.join(', ')}]`);
+    }
+    // Generate cognitive_integration if present
+    if (frontmatter.cognitive_integration) {
+        const ci = frontmatter.cognitive_integration;
+        lines.push('cognitive_integration:');
+        lines.push(`  awareness: ${formatCognitiveValue(ci.awareness)}`);
+        lines.push(`  ethics_check: ${formatCognitiveValue(ci.ethics_check)}`);
+        lines.push(`  verification: ${formatCognitiveValue(ci.verification)}`);
+        lines.push(`  experience_record: ${ci.experience_record}`);
+        if (ci.learning !== undefined) {
+            lines.push(`  learning: ${formatCognitiveValue(ci.learning)}`);
+        }
+    }
+    // Generate optional extended fields
+    if (frontmatter.triggers && frontmatter.triggers.length > 0) {
+        lines.push(`triggers: [${frontmatter.triggers.map(t => `"${t}"`).join(', ')}]`);
+    }
+    if (frontmatter.instance) {
+        lines.push(`instance: ${frontmatter.instance}`);
+    }
+    if (frontmatter.integrations && frontmatter.integrations.length > 0) {
+        lines.push(`integrations: [${frontmatter.integrations.map(i => `"${i}"`).join(', ')}]`);
+    }
+    if (frontmatter.signals && frontmatter.signals.length > 0) {
+        lines.push(`signals: [${frontmatter.signals.join(', ')}]`);
     }
     lines.push('---');
     lines.push('');

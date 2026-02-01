@@ -4,6 +4,20 @@
  */
 import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
+/**
+ * Safely parse JSON, returning defaultValue if parsing fails
+ */
+function safeJsonParse(json, defaultValue) {
+    if (!json)
+        return defaultValue;
+    try {
+        return JSON.parse(json);
+    }
+    catch {
+        console.error(`Failed to parse JSON: ${json.substring(0, 100)}...`);
+        return defaultValue;
+    }
+}
 // Singleton database instance
 let dbInstance = null;
 export class DatabaseManager {
@@ -26,6 +40,7 @@ export class DatabaseManager {
         token_count_layer2 INTEGER DEFAULT 0,
         file_path TEXT,
         tags TEXT,
+        cognitive_metadata TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER,
         deprecated_at INTEGER,
@@ -33,6 +48,13 @@ export class DatabaseManager {
         success_count INTEGER DEFAULT 0
       )
     `);
+        // Migration: Add cognitive_metadata column if not exists
+        try {
+            this.db.exec(`ALTER TABLE skills ADD COLUMN cognitive_metadata TEXT`);
+        }
+        catch {
+            // Column already exists
+        }
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)`);
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_skills_tags ON skills(tags)`);
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_skills_deprecated ON skills(deprecated_at)`);
@@ -86,11 +108,11 @@ export class DatabaseManager {
         const stmt = this.db.prepare(`
       INSERT INTO skills (
         id, name, description, full_content, version,
-        token_count_layer1, token_count_layer2, file_path, tags,
+        token_count_layer1, token_count_layer2, file_path, tags, cognitive_metadata,
         created_at, updated_at, deprecated_at, usage_count, success_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        stmt.run(id, skill.name, skill.description, skill.full_content, skill.version || 1, skill.token_count_layer1 || 0, skill.token_count_layer2 || 0, skill.file_path || null, skill.tags ? JSON.stringify(skill.tags) : null, skill.created_at || Date.now(), skill.updated_at || null, skill.deprecated_at || null, skill.usage_count || 0, skill.success_count || 0);
+        stmt.run(id, skill.name, skill.description, skill.full_content, skill.version || 1, skill.token_count_layer1 || 0, skill.token_count_layer2 || 0, skill.file_path || null, skill.tags ? JSON.stringify(skill.tags) : null, skill.cognitive_integration ? JSON.stringify(skill.cognitive_integration) : null, skill.created_at || Date.now(), skill.updated_at || null, skill.deprecated_at || null, skill.usage_count || 0, skill.success_count || 0);
         // Save initial version
         this.insertVersion({
             id: uuidv4(),
@@ -149,6 +171,10 @@ export class DatabaseManager {
         if (updates.tags !== undefined) {
             fields.push('tags = ?');
             values.push(JSON.stringify(updates.tags));
+        }
+        if (updates.cognitive_integration !== undefined) {
+            fields.push('cognitive_metadata = ?');
+            values.push(JSON.stringify(updates.cognitive_integration));
         }
         if (updates.deprecated_at !== undefined) {
             fields.push('deprecated_at = ?');
@@ -284,7 +310,7 @@ export class DatabaseManager {
             id: row.id,
             skill_id: row.skill_id,
             outcome: row.outcome,
-            context: row.context ? JSON.parse(row.context) : undefined,
+            context: safeJsonParse(row.context, undefined),
             notes: row.notes || undefined,
             duration_ms: row.duration_ms || undefined,
             created_at: row.created_at
@@ -384,7 +410,8 @@ export class DatabaseManager {
             token_count_layer1: row.token_count_layer1,
             token_count_layer2: row.token_count_layer2,
             file_path: row.file_path || undefined,
-            tags: row.tags ? JSON.parse(row.tags) : [],
+            tags: safeJsonParse(row.tags, []),
+            cognitive_integration: safeJsonParse(row.cognitive_metadata, undefined),
             created_at: row.created_at,
             updated_at: row.updated_at || undefined,
             deprecated_at: row.deprecated_at || undefined,
@@ -399,13 +426,14 @@ export class DatabaseManager {
             id: row.id,
             name: row.name,
             description: row.description,
-            tags: row.tags ? JSON.parse(row.tags) : [],
+            tags: safeJsonParse(row.tags, []),
             token_count_layer1: row.token_count_layer1,
             token_count_layer2: row.token_count_layer2,
             usage_count: row.usage_count,
             success_rate: row.usage_count > 0 ? row.success_count / row.usage_count : 0,
             created_at: row.created_at,
-            deprecated_at: row.deprecated_at || undefined
+            deprecated_at: row.deprecated_at || undefined,
+            cognitive_integration: safeJsonParse(row.cognitive_metadata, undefined)
         };
     }
     close() {

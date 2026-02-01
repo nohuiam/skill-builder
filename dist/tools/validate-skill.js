@@ -1,13 +1,16 @@
 /**
  * validate_skill Tool
  * Check SKILL.md structure, frontmatter, token counts per layer
+ * Includes cognitive integration validation for the 7-step cognitive loop
  */
 import { getDatabase } from '../database/schema.js';
 import { parseSkillMd, validateSkillMd } from '../parser/skill-parser.js';
 import { countLayer1Tokens, countLayer2Tokens, checkProgressiveDisclosure } from '../services/token-counter.js';
 import { analyzeDescription } from '../services/skill-matcher.js';
-export function validateSkill(input) {
+import { validateCognitiveIntegration } from '../services/cognitive-validator.js';
+export function validateSkill(input, options = {}) {
     let content;
+    const { strict_cognitive = false } = options;
     // Get content from skill_id, path, or direct content
     if (input.content) {
         content = input.content;
@@ -57,11 +60,24 @@ export function validateSkill(input) {
     const pdCheck = checkProgressiveDisclosure(layer1Tokens, layer2Tokens);
     // Analyze description
     const descAnalysis = analyzeDescription(parsed.frontmatter.description);
+    // Validate cognitive integration
+    const cognitiveValidation = validateCognitiveIntegration(parsed, strict_cognitive);
     // Combine all validation results
     const errors = [...structureValidation.errors];
     const warnings = [...structureValidation.warnings, ...pdCheck.warnings];
+    // Add cognitive validation results
+    if (cognitiveValidation.errors.length > 0) {
+        errors.push(...cognitiveValidation.errors);
+    }
+    if (cognitiveValidation.warnings.length > 0) {
+        warnings.push(...cognitiveValidation.warnings);
+    }
+    // Include cognitive recommendations in warnings if any
+    if (cognitiveValidation.recommendations.length > 0) {
+        warnings.push(`Cognitive recommendations: ${cognitiveValidation.recommendations.join('; ')}`);
+    }
     return {
-        valid: structureValidation.valid && pdCheck.ok,
+        valid: structureValidation.valid && pdCheck.ok && cognitiveValidation.valid,
         errors,
         warnings,
         token_counts: {
@@ -69,7 +85,8 @@ export function validateSkill(input) {
             layer2: layer2Tokens
         },
         progressive_disclosure_ok: pdCheck.ok,
-        description_analysis: descAnalysis
+        description_analysis: descAnalysis,
+        cognitive_validation: cognitiveValidation
     };
 }
 //# sourceMappingURL=validate-skill.js.map

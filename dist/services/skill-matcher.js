@@ -10,6 +10,8 @@ import { SKILL_CONFIG } from '../types.js';
  * Match a task description to available skills
  */
 export function matchSkills(taskDescription, skills, minConfidence = SKILL_CONFIG.MIN_MATCH_CONFIDENCE) {
+    // Clamp confidence to valid range [0, 1]
+    minConfidence = Math.max(0, Math.min(1, minConfidence));
     const matches = [];
     const taskTokens = tokenize(taskDescription.toLowerCase());
     const taskKeywords = extractKeywords(taskDescription);

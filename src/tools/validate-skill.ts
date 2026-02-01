@@ -1,6 +1,7 @@
 /**
  * validate_skill Tool
  * Check SKILL.md structure, frontmatter, token counts per layer
+ * Includes cognitive integration validation for the 7-step cognitive loop
  */
 
 import { getDatabase } from '../database/schema.js';
@@ -11,10 +12,20 @@ import {
   checkProgressiveDisclosure
 } from '../services/token-counter.js';
 import { analyzeDescription } from '../services/skill-matcher.js';
+import { validateCognitiveIntegration } from '../services/cognitive-validator.js';
 import { ValidateSkillInput, ValidationResult } from '../types.js';
 
-export function validateSkill(input: ValidateSkillInput): ValidationResult {
+export interface ValidateSkillOptions {
+  /** Whether to require cognitive_integration (default: false for backward compatibility) */
+  strict_cognitive?: boolean;
+}
+
+export function validateSkill(
+  input: ValidateSkillInput,
+  options: ValidateSkillOptions = {}
+): ValidationResult {
   let content: string;
+  const { strict_cognitive = false } = options;
 
   // Get content from skill_id, path, or direct content
   if (input.content) {
@@ -71,12 +82,28 @@ export function validateSkill(input: ValidateSkillInput): ValidationResult {
   // Analyze description
   const descAnalysis = analyzeDescription(parsed.frontmatter.description);
 
+  // Validate cognitive integration
+  const cognitiveValidation = validateCognitiveIntegration(parsed, strict_cognitive);
+
   // Combine all validation results
   const errors = [...structureValidation.errors];
   const warnings = [...structureValidation.warnings, ...pdCheck.warnings];
 
+  // Add cognitive validation results
+  if (cognitiveValidation.errors.length > 0) {
+    errors.push(...cognitiveValidation.errors);
+  }
+  if (cognitiveValidation.warnings.length > 0) {
+    warnings.push(...cognitiveValidation.warnings);
+  }
+
+  // Include cognitive recommendations in warnings if any
+  if (cognitiveValidation.recommendations.length > 0) {
+    warnings.push(`Cognitive recommendations: ${cognitiveValidation.recommendations.join('; ')}`);
+  }
+
   return {
-    valid: structureValidation.valid && pdCheck.ok,
+    valid: structureValidation.valid && pdCheck.ok && cognitiveValidation.valid,
     errors,
     warnings,
     token_counts: {
@@ -84,6 +111,7 @@ export function validateSkill(input: ValidateSkillInput): ValidationResult {
       layer2: layer2Tokens
     },
     progressive_disclosure_ok: pdCheck.ok,
-    description_analysis: descAnalysis
+    description_analysis: descAnalysis,
+    cognitive_validation: cognitiveValidation
   };
 }
