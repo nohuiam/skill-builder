@@ -13,24 +13,24 @@ let started = false;
 /**
  * Start the InterLock mesh
  */
-export function startInterlock(port) {
+export async function startInterlock(port) {
     if (started) {
         console.error('InterLock already started');
         return;
     }
     initHandlers();
-    startSocket(port);
+    await startSocket(port);
     started = true;
     console.error(`InterLock mesh started on port ${port}`);
 }
 /**
  * Close the InterLock mesh
  */
-export function closeInterlock() {
+export async function closeInterlock() {
     if (!started) {
         return;
     }
-    closeSocket();
+    await closeSocket();
     started = false;
     console.error('InterLock mesh closed');
 }

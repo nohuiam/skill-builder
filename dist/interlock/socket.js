@@ -1,10 +1,10 @@
 /**
  * InterLock UDP Socket
- * Handles mesh communication
+ * Handles mesh communication using shared @bop/interlock package
  */
-import dgram from 'dgram';
+import { InterlockSocket as SharedInterlockSocket, } from '@bop/interlock';
 import { SignalTypes } from '../types.js';
-import { encodeSignal, decodeSignal, createSignal } from './protocol.js';
+import { createSignal } from './protocol.js';
 import { isSignalAllowed } from './tumbler.js';
 import { handleSignal } from './handlers.js';
 import { readFileSync } from 'fs';
@@ -12,10 +12,8 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-let socket = null;
+let sharedSocket = null;
 let serverPort = 3029;
-let heartbeatTimer = null;
-const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 let peers = [];
 /**
  * Load peer configuration
@@ -32,18 +30,43 @@ function loadPeers() {
     }
 }
 /**
+ * Convert shared signal format to local format
+ */
+function convertToLocalSignal(sharedSignal) {
+    return {
+        signalType: sharedSignal.type,
+        version: 0x0100,
+        timestamp: sharedSignal.timestamp || Math.floor(Date.now() / 1000),
+        payload: {
+            sender: sharedSignal.data.serverId || 'unknown',
+            ...sharedSignal.data,
+        },
+    };
+}
+/**
  * Start the InterLock UDP socket
  */
-export function startSocket(port) {
+export async function startSocket(port) {
     serverPort = port;
     loadPeers();
-    socket = dgram.createSocket('udp4');
-    socket.on('message', (msg, rinfo) => {
-        const signal = decodeSignal(msg);
-        // Silently ignore invalid/incompatible signals from other servers
-        if (!signal) {
-            return;
-        }
+    // Convert peers to shared package format
+    const peerConfig = {};
+    for (const peer of peers) {
+        peerConfig[peer.name] = { host: 'localhost', port: peer.port };
+    }
+    // Create shared socket
+    sharedSocket = new SharedInterlockSocket({
+        port,
+        serverId: 'skill-builder',
+        heartbeat: {
+            interval: 30000,
+            timeout: 90000,
+        },
+        peers: peerConfig,
+    });
+    // Set up signal handler
+    sharedSocket.on('signal', (sharedSignal, rinfo) => {
+        const signal = convertToLocalSignal(sharedSignal);
         // Check tumbler whitelist
         if (!isSignalAllowed(signal)) {
             return;
@@ -51,41 +74,18 @@ export function startSocket(port) {
         // Route to handler
         handleSignal(signal);
     });
-    socket.on('error', (error) => {
+    sharedSocket.on('error', (error) => {
         console.error('InterLock socket error:', error);
     });
-    socket.bind(port, () => {
-        console.error(`InterLock socket listening on port ${port}`);
-        startHeartbeat();
-    });
-    return socket;
-}
-/**
- * Start heartbeat broadcasting
- */
-function startHeartbeat() {
-    if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-    }
-    heartbeatTimer = setInterval(() => {
-        const signal = createSignal(SignalTypes.HEARTBEAT, 'skill-builder', {
-            status: 'alive',
-            uptime: process.uptime()
-        });
-        broadcastSignal(signal);
-    }, HEARTBEAT_INTERVAL);
-    // Send initial heartbeat immediately
-    const signal = createSignal(SignalTypes.HEARTBEAT, 'skill-builder', {
-        status: 'alive',
-        uptime: process.uptime()
-    });
-    broadcastSignal(signal);
+    await sharedSocket.start();
+    console.error(`InterLock socket listening on port ${port}`);
+    return sharedSocket;
 }
 /**
  * Send a signal to a specific peer
  */
 export function sendToPeer(peerName, signal) {
-    if (!socket) {
+    if (!sharedSocket) {
         console.error('Socket not initialized');
         return;
     }
@@ -94,11 +94,15 @@ export function sendToPeer(peerName, signal) {
         console.error(`Unknown peer: ${peerName}`);
         return;
     }
-    const buffer = encodeSignal(signal);
-    socket.send(buffer, peer.port, 'localhost', (error) => {
-        if (error) {
-            console.error(`Failed to send to ${peerName}:`, error);
-        }
+    const signalInput = {
+        type: signal.signalType,
+        data: {
+            serverId: signal.payload.sender,
+            ...signal.payload,
+        },
+    };
+    sharedSocket.send('localhost', peer.port, signalInput).catch((error) => {
+        console.error(`Failed to send to ${peerName}:`, error);
     });
 }
 /**
@@ -120,7 +124,7 @@ export function emitSkillCreated(skillId, name) {
         skill_id: skillId,
         name
     });
-    broadcastSignal(signal, ['consciousness', 'experience-layer']);
+    broadcastSignal(signal, ['consciousness-mcp', 'experience-layer']);
 }
 /**
  * Emit SKILL_MATCHED signal
@@ -131,7 +135,7 @@ export function emitSkillMatched(skillId, taskDescription, confidence) {
         task_description: taskDescription,
         confidence
     });
-    broadcastSignal(signal, ['consciousness']);
+    broadcastSignal(signal, ['consciousness-mcp']);
 }
 /**
  * Emit SKILL_USED signal
@@ -151,7 +155,7 @@ export function emitSkillDeprecated(skillId, reason) {
         skill_id: skillId,
         reason
     });
-    broadcastSignal(signal, ['consciousness']);
+    broadcastSignal(signal, ['consciousness-mcp']);
 }
 /**
  * Emit SKILL_VALIDATION_FAILED signal
@@ -161,19 +165,15 @@ export function emitSkillValidationFailed(skillId, errors) {
         skill_id: skillId,
         errors
     });
-    broadcastSignal(signal, ['consciousness']);
+    broadcastSignal(signal, ['consciousness-mcp']);
 }
 /**
  * Close the socket
  */
-export function closeSocket() {
-    if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-    }
-    if (socket) {
-        socket.close();
-        socket = null;
+export async function closeSocket() {
+    if (sharedSocket) {
+        await sharedSocket.stop();
+        sharedSocket = null;
     }
 }
 /**
@@ -181,7 +181,7 @@ export function closeSocket() {
  */
 export function getSocketStatus() {
     return {
-        listening: socket !== null,
+        listening: sharedSocket !== null,
         port: serverPort,
         peerCount: peers.length
     };

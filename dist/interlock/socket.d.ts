@@ -1,13 +1,13 @@
 /**
  * InterLock UDP Socket
- * Handles mesh communication
+ * Handles mesh communication using shared @bop/interlock package
  */
-import dgram from 'dgram';
+import { InterlockSocket as SharedInterlockSocket } from '@bop/interlock';
 import { Signal } from '../types.js';
 /**
  * Start the InterLock UDP socket
  */
-export declare function startSocket(port: number): dgram.Socket;
+export declare function startSocket(port: number): Promise<SharedInterlockSocket>;
 /**
  * Send a signal to a specific peer
  */
@@ -39,7 +39,7 @@ export declare function emitSkillValidationFailed(skillId: string, errors: strin
 /**
  * Close the socket
  */
-export declare function closeSocket(): void;
+export declare function closeSocket(): Promise<void>;
 /**
  * Get socket status
  */

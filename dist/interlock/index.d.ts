@@ -10,9 +10,9 @@ export { emitSkillCreated, emitSkillMatched, emitSkillUsed, emitSkillDeprecated,
 /**
  * Start the InterLock mesh
  */
-export declare function startInterlock(port: number): void;
+export declare function startInterlock(port: number): Promise<void>;
 /**
  * Close the InterLock mesh
  */
-export declare function closeInterlock(): void;
+export declare function closeInterlock(): Promise<void>;
 //# sourceMappingURL=index.d.ts.map

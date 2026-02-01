@@ -116,7 +116,7 @@ async function main() {
         }
         // Start InterLock mesh
         try {
-            startInterlock(3029);
+            await startInterlock(3029);
         }
         catch (error) {
             console.error('Failed to start InterLock:', error);
