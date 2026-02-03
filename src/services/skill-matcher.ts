@@ -63,27 +63,41 @@ function calculateMatchConfidence(
   taskKeywords: string[],
   skill: SkillMetadata
 ): number {
+  const taskNorm = normalizeForMatch(taskDescription);
   const skillName = skill.name.toLowerCase();
+  const skillNameNorm = normalizeForMatch(skill.name);
   const skillDesc = skill.description.toLowerCase();
   const skillTags = (skill.tags || []).map(t => t.toLowerCase());
 
   let score = 0;
 
-  // Exact name match (high weight)
-  if (taskDescription.toLowerCase().includes(skillName)) {
-    score += 0.4;
+  // Exact name match (highest weight) - check both original and normalized
+  if (taskNorm.includes(skillNameNorm) || taskDescription.toLowerCase().includes(skillName)) {
+    score += 0.5;  // Increased from 0.4
+  } else {
+    // Partial name match - check if all name tokens appear in task
+    const skillNameTokens = tokenize(skillNameNorm);
+    const taskTokenSet = new Set(taskTokens);
+    const nameTokensMatched = skillNameTokens.filter(t => taskTokenSet.has(t)).length;
+    if (skillNameTokens.length > 0 && nameTokensMatched === skillNameTokens.length) {
+      // All name tokens present (e.g., "health check" matches "ecosystem health check")
+      score += 0.4;
+    } else if (skillNameTokens.length > 0 && nameTokensMatched >= skillNameTokens.length * 0.5) {
+      // At least half of name tokens present
+      score += 0.2 * (nameTokensMatched / skillNameTokens.length);
+    }
   }
 
-  // Keyword overlap with description
+  // Keyword overlap with description (with stop words filtered)
   const skillDescTokens = tokenize(skillDesc);
   const descOverlap = calculateOverlap(taskTokens, skillDescTokens);
-  score += descOverlap * 0.3;
+  score += descOverlap * 0.25;
 
   // Keyword matches
   const keywordScore = calculateKeywordMatch(taskKeywords, skillDesc, skillTags);
-  score += keywordScore * 0.2;
+  score += keywordScore * 0.15;
 
-  // Tag matches
+  // Tag matches (exact tag matches are valuable)
   const tagScore = calculateTagMatch(taskTokens, skillTags);
   score += tagScore * 0.1;
 
@@ -126,35 +140,46 @@ function findTriggers(
   return [...new Set(triggers)]; // Remove duplicates
 }
 
+// Common stop words to filter out
+const STOP_WORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+  'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been',
+  'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+  'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'this',
+  'that', 'these', 'those', 'it', 'its', 'i', 'me', 'my', 'we', 'our',
+  'you', 'your', 'he', 'him', 'his', 'she', 'her', 'they', 'them', 'their',
+  'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each',
+  'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no',
+  'not', 'only', 'same', 'so', 'than', 'too', 'very', 'just', 'also',
+  'need', 'want', 'like', 'get', 'make', 'using', 'use'
+]);
+
 /**
- * Tokenize text into words
+ * Normalize text for matching (convert hyphens to spaces, etc.)
+ */
+function normalizeForMatch(text: string): string {
+  return text.toLowerCase().replace(/-/g, ' ').replace(/_/g, ' ');
+}
+
+/**
+ * Tokenize text into words, filtering stop words
  */
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[^\w\s-]/g, ' ')
+    .replace(/-/g, ' ')  // Convert hyphens to spaces
     .split(/\s+/)
-    .filter(w => w.length > 2); // Filter out very short words
+    .filter(w => w.length > 2 && !STOP_WORDS.has(w)); // Filter short words AND stop words
 }
 
 /**
  * Extract keywords (important terms) from text
+ * Uses shared STOP_WORDS set and requires length > 3
  */
 function extractKeywords(text: string): string[] {
-  const stopWords = new Set([
-    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-    'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been',
-    'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-    'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'this',
-    'that', 'these', 'those', 'it', 'its', 'i', 'me', 'my', 'we', 'our',
-    'you', 'your', 'he', 'him', 'his', 'she', 'her', 'they', 'them', 'their',
-    'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each',
-    'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no',
-    'not', 'only', 'same', 'so', 'than', 'too', 'very', 'just', 'also'
-  ]);
-
   const tokens = tokenize(text);
-  return tokens.filter(t => !stopWords.has(t) && t.length > 3);
+  return tokens.filter(t => t.length > 3);  // tokenize already filters stop words
 }
 
 /**
